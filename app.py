@@ -97,12 +97,23 @@ def veilige_int(x):
         return None
 
 
-def zoek_beste_match(strobbo_naam, crew_namen):
-    strobbo_norm = normaliseer_naam(strobbo_naam)
+def zoek_beste_match(strobbo_naam, crew_df):
+    naam = normaliseer_naam(strobbo_naam)
+
+    # 1. exacte voornaam match
+    for _, row in crew_df.iterrows():
+        voornaam = normaliseer_naam(row["VOORNAAM"])
+        if naam == voornaam:
+            return row["VOLLEDIGE_NAAM"], 100
+
+    # 2. fuzzy match volledige naam
+    crew_namen = crew_df["VOLLEDIGE_NAAM"].tolist()
     crew_norms = [normaliseer_naam(n) for n in crew_namen]
 
+    from rapidfuzz import process, fuzz
+
     match = process.extractOne(
-        strobbo_norm,
+        naam,
         crew_norms,
         scorer=fuzz.token_sort_ratio
     )
@@ -110,9 +121,9 @@ def zoek_beste_match(strobbo_naam, crew_namen):
     if not match:
         return None, 0
 
-    gematchte_norm, score, index = match
+    _, score, index = match
 
-    if score >= FUZZY_MATCH_SCORE:
+    if score >= 70:
         return crew_namen[index], score
 
     return None, score
@@ -296,7 +307,7 @@ if shifts_df.empty:
 match_resultaten = []
 
 for naam in shifts_df["strobbo_naam"].unique():
-    beste_naam, score = zoek_beste_match(naam, crew_namen)
+    beste_naam, score = zoek_beste_match(naam, crew)
     match_resultaten.append({
         "Strobbo naam": naam,
         "Database naam": beste_naam if beste_naam else "NIET GEVONDEN",
@@ -534,7 +545,17 @@ else:
     st.error(f"{len(fouten_df)} fout(en) of waarschuwing(en) gevonden.")
     st.dataframe(fouten_df, use_container_width=True)
 
-    excel_export = fouten_df.to_excel(index=False)
+    import io
+
+buffer = io.BytesIO()
+fouten_df.to_excel(buffer, index=False)
+
+st.download_button(
+    label="📥 Download fouten als Excel",
+    data=buffer.getvalue(),
+    file_name="foutenrapport.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 st.subheader("📊 Weekuren per medewerker")
 
