@@ -13,30 +13,13 @@ st.set_page_config(page_title="FBO Hours Control tool", layout="wide")
 
 st.markdown("""
 <style>
-
-/* KPI kaarten */
-.kpi-card {
-    background-color: #f5f5f5;
-    border-radius: 20px;
-    padding: 25px;
-    color: #145a32;  /* 🔥 DONKER GROEN voor tekst */
-}
-
-/* Titel in kaart */
-.kpi-title {
-    color: #666666;  /* grijs i.p.v. wit */
-    font-size: 14px;
-}
-
-/* Grote cijfers */
-.kpi-value {
-    color: #145a32;  /* donker groen */
-    font-size: 48px;
-    font-weight: bold;
-}
-
-</style>
-""", unsafe_allow_html=True)
+    :root {
+        --fbo-green: #0B5D3B;
+        --fbo-green-2: #0F7A4F;
+        --fbo-mint: #EAF7F0;
+        --fbo-soft: #F6FBF8;
+        --fbo-border: #D8EDE2;
+    }
     .block-container { padding-top: 1.6rem; padding-bottom: 2rem; max-width: 1400px; }
     .fbo-hero {
         background: linear-gradient(135deg, #0B5D3B 0%, #0F7A4F 60%, #18A866 100%);
@@ -53,7 +36,7 @@ st.markdown("""
     div[data-testid="stMetricValue"] { color: var(--fbo-green); font-weight: 900; }
     .stTabs [data-baseweb="tab-list"] { gap: 8px; background: var(--fbo-soft); border: 1px solid var(--fbo-border); padding: 7px; border-radius: 18px; }
     .stTabs [data-baseweb="tab"] { border-radius: 14px; padding: 10px 16px; color: #1c4632; font-weight: 750; }
-    .stTabs [aria-selected="true"] { background: var(--fbo-green) !important; color: green !important; }
+    .stTabs [aria-selected="true"] { background: var(--fbo-green) !important; color: white !important; }
     .stDownloadButton button, .stButton button { background: var(--fbo-green); color: white; border: 0; border-radius: 14px; padding: 0.75rem 1rem; font-weight: 800; box-shadow: 0 10px 22px rgba(11, 93, 59, 0.16); }
     .stDownloadButton button:hover, .stButton button:hover { background: var(--fbo-green-2); color: white; border: 0; }
 </style>
