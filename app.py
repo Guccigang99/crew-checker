@@ -425,7 +425,7 @@ if not shifts_df.empty:
             if gap_minuten <= MERGE_GAP_MINUTEN:
                 huidige["einde"] = max(huidige["einde"], blok["einde"])
                 huidige["pauze_minuten"] += blok["pauze_minuten"]
-               huidige["origineel"] = str(huidige.get("origineel", "")) + "\\n---\\n" + str(blok.get("origineel", ""))
+                huidige["origineel"] = str(huidige.get("origineel", "")) + "\\n---\\n" + str(blok.get("origineel", ""))
 ---
 " + str(blok.get("origineel", ""))
                 huidige["bron_rij"] = str(huidige.get("bron_rij", "")) + ", " + str(blok.get("bron_rij", ""))
