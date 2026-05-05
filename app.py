@@ -13,13 +13,30 @@ st.set_page_config(page_title="FBO Hours Control tool", layout="wide")
 
 st.markdown("""
 <style>
-    :root {
-        --fbo-green: #0B5D3B;
-        --fbo-green-2: #0F7A4F;
-        --fbo-mint: #EAF7F0;
-        --fbo-soft: #F6FBF8;
-        --fbo-border: #D8EDE2;
-    }
+
+/* KPI kaarten */
+.kpi-card {
+    background-color: #f5f5f5;
+    border-radius: 20px;
+    padding: 25px;
+    color: #145a32;  /* 🔥 DONKER GROEN voor tekst */
+}
+
+/* Titel in kaart */
+.kpi-title {
+    color: #666666;  /* grijs i.p.v. wit */
+    font-size: 14px;
+}
+
+/* Grote cijfers */
+.kpi-value {
+    color: #145a32;  /* donker groen */
+    font-size: 48px;
+    font-weight: bold;
+}
+
+</style>
+""", unsafe_allow_html=True)
     .block-container { padding-top: 1.6rem; padding-bottom: 2rem; max-width: 1400px; }
     .fbo-hero {
         background: linear-gradient(135deg, #0B5D3B 0%, #0F7A4F 60%, #18A866 100%);
