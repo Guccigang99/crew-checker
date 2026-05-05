@@ -23,7 +23,7 @@ st.markdown("""
     .block-container { padding-top: 1.6rem; padding-bottom: 2rem; max-width: 1400px; }
     .fbo-hero {
         background: linear-gradient(135deg, #0B5D3B 0%, #0F7A4F 60%, #18A866 100%);
-        border-radius: 24px; padding: 30px 34px; color: green;
+        border-radius: 24px; padding: 30px 34px; color: white;
         box-shadow: 0 18px 45px rgba(11, 93, 59, 0.22); margin-bottom: 22px;
     }
     .fbo-kicker { text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.78rem; opacity: 0.86; font-weight: 700; margin-bottom: 6px; }
@@ -36,7 +36,7 @@ st.markdown("""
     div[data-testid="stMetricValue"] { color: var(--fbo-green); font-weight: 900; }
     .stTabs [data-baseweb="tab-list"] { gap: 8px; background: var(--fbo-soft); border: 1px solid var(--fbo-border); padding: 7px; border-radius: 18px; }
     .stTabs [data-baseweb="tab"] { border-radius: 14px; padding: 10px 16px; color: #1c4632; font-weight: 750; }
-    .stTabs [aria-selected="true"] { background: var(--fbo-green) !important; color: white !important; }
+    .stTabs [aria-selected="true"] { background: var(--fbo-green) !important; color: green !important; }
     .stDownloadButton button, .stButton button { background: var(--fbo-green); color: white; border: 0; border-radius: 14px; padding: 0.75rem 1rem; font-weight: 800; box-shadow: 0 10px 22px rgba(11, 93, 59, 0.16); }
     .stDownloadButton button:hover, .stButton button:hover { background: var(--fbo-green-2); color: white; border: 0; }
 </style>
