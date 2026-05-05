@@ -23,7 +23,7 @@ st.markdown("""
     .block-container { padding-top: 1.6rem; padding-bottom: 2rem; max-width: 1400px; }
     .fbo-hero {
         background: linear-gradient(135deg, #0B5D3B 0%, #0F7A4F 60%, #18A866 100%);
-        border-radius: 24px; padding: 30px 34px; color: white;
+        border-radius: 24px; padding: 30px 34px; color: green;
         box-shadow: 0 18px 45px rgba(11, 93, 59, 0.22); margin-bottom: 22px;
     }
     .fbo-kicker { text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.78rem; opacity: 0.86; font-weight: 700; margin-bottom: 6px; }
