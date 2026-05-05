@@ -399,6 +399,53 @@ if shifts_df.empty:
 
 
 # =========================
+# SHIFTS SAMENVOEGEN OVER RIJEN
+# =========================
+
+# Strobbo zet soms 1 echte shift in meerdere vakken/rijen omdat de taak wijzigt.
+# Voorbeeld:
+# rij 1: 09:30-10:00 Aanv. C.
+# rij 2: 10:00-14:45 Service
+# Dit moet samen 1 shift worden.
+
+if not shifts_df.empty:
+    shifts_df = shifts_df.sort_values(["strobbo_naam", "datum", "start", "einde"]).reset_index(drop=True)
+
+    samengevoegde_shifts = []
+
+    for (naam, datum), groep in shifts_df.groupby(["strobbo_naam", "datum"]):
+        groep = groep.sort_values("start").reset_index(drop=True)
+
+        huidige = groep.iloc[0].to_dict()
+
+        for i in range(1, len(groep)):
+            blok = groep.iloc[i].to_dict()
+            gap_minuten = (blok["start"] - huidige["einde"]).total_seconds() / 60
+
+            if gap_minuten <= MERGE_GAP_MINUTEN:
+                huidige["einde"] = max(huidige["einde"], blok["einde"])
+                huidige["pauze_minuten"] += blok["pauze_minuten"]
+                huidige["origineel"] = str(huidige.get("origineel", "")) + "
+---
+" + str(blok.get("origineel", ""))
+                huidige["bron_rij"] = str(huidige.get("bron_rij", "")) + ", " + str(blok.get("bron_rij", ""))
+                huidige["bron_kolom"] = str(huidige.get("bron_kolom", ""))
+            else:
+                bruto_uren = (huidige["einde"] - huidige["start"]).total_seconds() / 3600
+                huidige["bruto_uren"] = bruto_uren
+                huidige["netto_uren"] = bruto_uren - (huidige["pauze_minuten"] / 60)
+                samengevoegde_shifts.append(huidige)
+                huidige = blok
+
+        bruto_uren = (huidige["einde"] - huidige["start"]).total_seconds() / 3600
+        huidige["bruto_uren"] = bruto_uren
+        huidige["netto_uren"] = bruto_uren - (huidige["pauze_minuten"] / 60)
+        samengevoegde_shifts.append(huidige)
+
+    shifts_df = pd.DataFrame(samengevoegde_shifts)
+
+
+# =========================
 # MATCHEN MET DATABASE
 # =========================
 
