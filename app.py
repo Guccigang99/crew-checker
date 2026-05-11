@@ -268,7 +268,7 @@ def normaliseer_naam(naam):
     # "Veronique MGR" -> "veronique"
     # "Ayrton FLX" -> "ayrton"
     # "Luka B. <18" -> "luka b"
-    naam = re.sub(r"\b(mgr|manager|flx|flexi|student|crew|crewtrainer)\b", "", naam)
+    naam = re.sub(r"\b(mgr|MGR|manager|flx|flexi|student|crew|crewtrainer)\b", "", naam)
 
     naam = naam.replace(".", " ")
     naam = naam.replace("-", " ")
