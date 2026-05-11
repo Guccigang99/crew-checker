@@ -223,7 +223,7 @@ with hero_logo_col:
 
 with hero_text_col:
     st.markdown("""
-        <div class="brand-badge">Smart Workforce Compliance</div>
+        <div class="brand-badge">BY FBO</div>
         <h1 class="brand-title">ScheduleSafe</h1>
         <p class="brand-subtitle">
             Controleer Strobbo-weekroosters op basis van de wetgeving. Gauthier Meeuws © 
