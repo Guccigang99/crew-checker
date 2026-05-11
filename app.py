@@ -226,7 +226,7 @@ with hero_text_col:
         <div class="brand-badge">Smart Workforce Compliance</div>
         <h1 class="brand-title">ScheduleSafe</h1>
         <p class="brand-subtitle">
-            Controleer Strobbo-weekroosters op basis van de wetgeving. ©Gauthier Meeuws 
+            Controleer Strobbo-weekroosters op basis van de wetgeving. Gauthier Meeuws © 
         </p>
     """, unsafe_allow_html=True)
 
