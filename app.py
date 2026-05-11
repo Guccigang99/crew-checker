@@ -1,6 +1,8 @@
+
 import re
 from datetime import datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -10,93 +12,225 @@ from openpyxl.styles import PatternFill, Font
 from openpyxl.comments import Comment
 
 # =========================
-# PAGE CONFIG + DESIGN
+# PAGE CONFIG
 # =========================
 
 st.set_page_config(
-    page_title="FBO Hours Control tool",
+    page_title="ScheduleSafe",
     page_icon="✅",
     layout="wide",
 )
 
+# =========================
+# DESIGN
+# =========================
+
 st.markdown("""
 <style>
     :root {
-        --fbo-green: #006b3f;
-        --fbo-green-dark: #004f2d;
-        --fbo-green-soft: #e8f5ee;
-        --fbo-border: #cfe7dc;
-        --fbo-text: #10251a;
-        --fbo-muted: #5d7067;
+        --safe-green: #006b3f;
+        --safe-green-dark: #003f27;
+        --safe-green-mid: #008f55;
+        --safe-green-soft: #e8f5ee;
+        --safe-bg: #f5fbf8;
+        --safe-border: #cfe7dc;
+        --safe-text: #10251a;
+        --safe-muted: #53665d;
+        --safe-white: #ffffff;
+        --safe-danger: #b42318;
+        --safe-warning: #b54708;
     }
+
+    html, body, [class*="css"] {
+        color: var(--safe-text) !important;
+    }
+
     .stApp {
-        background: linear-gradient(180deg, #f7fbf9 0%, #ffffff 45%, #f7fbf9 100%);
-        color: var(--fbo-text);
+        background:
+            radial-gradient(circle at top left, rgba(0, 107, 63, 0.12), transparent 30%),
+            linear-gradient(180deg, #f7fbf9 0%, #ffffff 55%, #f7fbf9 100%);
+        color: var(--safe-text);
     }
-    .block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1500px; }
-    .hero {
-        background: linear-gradient(135deg, #006b3f 0%, #008f55 100%);
-        color: white;
-        padding: 28px 32px;
-        border-radius: 24px;
+
+    .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 3rem;
+        max-width: 1500px;
+    }
+
+    .hero-wrapper {
+        background: linear-gradient(135deg, #ffffff 0%, #f0faf5 100%);
+        border: 1px solid var(--safe-border);
+        border-radius: 28px;
+        padding: 22px 28px;
         margin-bottom: 24px;
-        box-shadow: 0 16px 40px rgba(0, 107, 63, 0.22);
+        box-shadow: 0 18px 45px rgba(0, 64, 38, 0.10);
     }
-    .hero h1 { margin: 0; font-size: 42px; line-height: 1.05; color: white; letter-spacing: -0.04em; }
-    .hero p { margin-top: 10px; margin-bottom: 0; font-size: 16px; color: rgba(255,255,255,0.92); }
-    .upload-card {
-        background: white;
-        border: 1px solid var(--fbo-border);
-        border-radius: 18px;
-        padding: 18px 20px;
-        box-shadow: 0 8px 22px rgba(0, 64, 38, 0.07);
-        margin-bottom: 14px;
+
+    .brand-title {
+        color: var(--safe-green-dark) !important;
+        font-size: 46px;
+        line-height: 1.02;
+        font-weight: 950;
+        letter-spacing: -0.055em;
+        margin: 0;
     }
-    .kpi-card {
-        background: #ffffff;
-        border: 1px solid var(--fbo-border);
-        border-radius: 20px;
-        padding: 20px 22px;
-        box-shadow: 0 8px 24px rgba(0, 64, 38, 0.08);
-        min-height: 126px;
+
+    .brand-subtitle {
+        color: var(--safe-muted) !important;
+        font-size: 17px;
+        margin-top: 8px;
+        margin-bottom: 0;
     }
-    .kpi-title {
-        color: var(--fbo-muted);
-        font-size: 14px;
-        font-weight: 700;
+
+    .brand-badge {
+        display: inline-block;
+        background: var(--safe-green);
+        color: white !important;
+        padding: 7px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.05em;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
         margin-bottom: 12px;
     }
-    .kpi-value { color: var(--fbo-green); font-size: 44px; font-weight: 900; line-height: 1; }
-    .kpi-sub { color: var(--fbo-muted); font-size: 13px; margin-top: 8px; }
-    .section-title { color: var(--fbo-green-dark); font-weight: 800; margin-top: 10px; margin-bottom: 6px; }
-    div[data-testid="stFileUploader"] { background: #ffffff; border: 1px dashed #8fc7ad; border-radius: 16px; padding: 12px; }
-    div[data-testid="stDownloadButton"] button, div[data-testid="stButton"] button {
-        background: var(--fbo-green); color: white; border: 0; border-radius: 12px; font-weight: 800; padding: 0.65rem 1rem;
+
+    .upload-card {
+        background: white;
+        border: 1px solid var(--safe-border);
+        border-radius: 22px;
+        padding: 20px 22px;
+        box-shadow: 0 10px 26px rgba(0, 64, 38, 0.07);
+        margin-bottom: 16px;
     }
-    div[data-testid="stDownloadButton"] button:hover, div[data-testid="stButton"] button:hover {
-        background: var(--fbo-green-dark); color: white; border: 0;
+
+    .kpi-card {
+        background: white;
+        border: 1px solid var(--safe-border);
+        border-radius: 22px;
+        padding: 22px 24px;
+        box-shadow: 0 10px 28px rgba(0, 64, 38, 0.08);
+        min-height: 134px;
     }
+
+    .kpi-title {
+        color: var(--safe-muted) !important;
+        font-size: 13px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.055em;
+        margin-bottom: 12px;
+    }
+
+    .kpi-value {
+        color: var(--safe-green) !important;
+        font-size: 46px;
+        font-weight: 950;
+        line-height: 1;
+    }
+
+    .kpi-sub {
+        color: var(--safe-muted) !important;
+        font-size: 13px;
+        margin-top: 9px;
+    }
+
+    .section-title {
+        color: var(--safe-green-dark) !important;
+        font-weight: 950;
+        font-size: 20px;
+        margin-top: 8px;
+        margin-bottom: 8px;
+    }
+
     .small-note {
-        background: var(--fbo-green-soft);
-        border: 1px solid var(--fbo-border);
-        color: var(--fbo-green-dark);
-        border-radius: 14px;
-        padding: 12px 14px;
+        background: var(--safe-green-soft);
+        border: 1px solid var(--safe-border);
+        color: var(--safe-green-dark) !important;
+        border-radius: 16px;
+        padding: 13px 15px;
         font-size: 14px;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
     }
-    h2, h3 { color: var(--fbo-green-dark); }
+
+    div[data-testid="stFileUploader"] {
+        background: #ffffff;
+        border: 1px dashed #8fc7ad;
+        border-radius: 18px;
+        padding: 14px;
+    }
+
+    div[data-testid="stFileUploader"] * {
+        color: var(--safe-text) !important;
+    }
+
+    button[data-baseweb="tab"] {
+        color: var(--safe-green-dark) !important;
+        font-weight: 900 !important;
+        background: transparent !important;
+    }
+
+    button[data-baseweb="tab"] p {
+        color: var(--safe-green-dark) !important;
+        font-weight: 900 !important;
+    }
+
+    div[data-testid="stDownloadButton"] button, div[data-testid="stButton"] button {
+        background: var(--safe-green) !important;
+        color: white !important;
+        border: 0 !important;
+        border-radius: 14px !important;
+        font-weight: 900 !important;
+        padding: 0.7rem 1.05rem !important;
+        box-shadow: 0 8px 18px rgba(0, 107, 63, 0.20);
+    }
+
+    div[data-testid="stDownloadButton"] button:hover, div[data-testid="stButton"] button:hover {
+        background: var(--safe-green-dark) !important;
+        color: white !important;
+        border: 0 !important;
+    }
+
+    h1, h2, h3, h4, p, label, .stMarkdown, .stText {
+        color: var(--safe-text) !important;
+    }
+
+    .stAlert * {
+        color: inherit !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<div class="hero">
-    <h1>FBO Hours Control tool</h1>
-    <p>Controleer Strobbo-weekroosters op contracturen, pauzes, rusttijden, split shifts en minderjarigenregels.</p>
-</div>
-""", unsafe_allow_html=True)
+# =========================
+# HERO WITH LOGO
+# =========================
+
+logo_path = Path("logo.png")
+
+st.markdown('<div class="hero-wrapper">', unsafe_allow_html=True)
+hero_logo_col, hero_text_col = st.columns([1, 5], vertical_alignment="center")
+
+with hero_logo_col:
+    if logo_path.exists():
+        st.image(str(logo_path), width=185)
+    else:
+        st.markdown("""
+        <div style="background:#006b3f;color:white;border-radius:22px;padding:24px;text-align:center;font-weight:950;">
+            ScheduleSafe
+        </div>
+        """, unsafe_allow_html=True)
+
+with hero_text_col:
+    st.markdown("""
+        <div class="brand-badge">Smart Workforce Compliance</div>
+        <h1 class="brand-title">ScheduleSafe</h1>
+        <p class="brand-subtitle">
+            Controleer Strobbo-weekroosters op contracturen, pauzes, rusttijden, split shifts en minderjarigenregels.
+        </p>
+    """, unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
 # INSTELLINGEN
@@ -129,8 +263,14 @@ def normaliseer_naam(naam):
     naam = str(naam).lower().strip()
     naam = naam.replace("#", "")
     naam = re.sub(r"<\s*\d+", "", naam)
-    naam = re.sub(r"\b(mgr|manager|flx|flexi|student)\b", "", naam)
-    naam = naam.replace(".", "")
+
+    # Strobbo-tags wegfilteren, ook als ze achter de naam staan:
+    # "Veronique MGR" -> "veronique"
+    # "Ayrton FLX" -> "ayrton"
+    # "Luka B. <18" -> "luka b"
+    naam = re.sub(r"\b(mgr|manager|flx|flexi|student|crew|crewtrainer)\b", "", naam)
+
+    naam = naam.replace(".", " ")
     naam = naam.replace("-", " ")
     naam = re.sub(r"\s+", " ", naam)
     return naam.strip()
@@ -183,40 +323,77 @@ def veilige_int(x):
 
 def zoek_beste_match(strobbo_naam, crew_df):
     naam = normaliseer_naam(strobbo_naam)
+
+    if not naam:
+        return None, 0
+
+    # 1. Exacte voornaam match
     exacte_matches = []
     for _, row in crew_df.iterrows():
         voornaam = normaliseer_naam(row["VOORNAAM"])
         if naam == voornaam:
             exacte_matches.append(row["VOLLEDIGE_NAAM"])
+
     if len(exacte_matches) == 1:
         return exacte_matches[0], 100
 
+    # 2. Als exportnaam meerdere woorden heeft, probeer eerste woord als voornaam
+    # bv. "Veronique MGR" is na normalisatie "veronique"
+    # bv. "Ayrton verantwoordelijke" -> eerste woord "ayrton"
+    eerste_woord = naam.split(" ")[0] if naam else ""
+    if eerste_woord and eerste_woord != naam:
+        exacte_voornaam = []
+        for _, row in crew_df.iterrows():
+            voornaam = normaliseer_naam(row["VOORNAAM"])
+            if eerste_woord == voornaam:
+                exacte_voornaam.append(row["VOLLEDIGE_NAAM"])
+        if len(exacte_voornaam) == 1:
+            return exacte_voornaam[0], 98
+
+    # 3. Voornaam + initiaal achternaam, bv. Luka B.
     match_initiaal = re.match(r"^([a-zA-ZÀ-ÿ]+)\s+([a-zA-Z])$", naam)
     if match_initiaal:
         voornaam_gezocht = match_initiaal.group(1)
         initiaal_gezocht = match_initiaal.group(2)
+
         for _, row in crew_df.iterrows():
             voornaam = normaliseer_naam(row["VOORNAAM"])
             achternaam = normaliseer_naam(row["NAAM"])
+
             if voornaam == voornaam_gezocht and achternaam.startswith(initiaal_gezocht):
                 return row["VOLLEDIGE_NAAM"], 100
 
+    # 4. Fuzzy match op voornaam
     voornamen = crew_df["VOORNAAM"].astype(str).tolist()
     voornamen_norm = [normaliseer_naam(v) for v in voornamen]
+
     match = process.extractOne(naam, voornamen_norm, scorer=fuzz.ratio)
     if match:
         _, score, index = match
-        if score >= 90:
+        if score >= 88:
             return crew_df.iloc[index]["VOLLEDIGE_NAAM"], round(score, 2)
 
+    # 5. Fuzzy op eerste woord
+    if eerste_woord:
+        match = process.extractOne(eerste_woord, voornamen_norm, scorer=fuzz.ratio)
+        if match:
+            _, score, index = match
+            if score >= 92:
+                return crew_df.iloc[index]["VOLLEDIGE_NAAM"], round(score, 2)
+
+    # 6. Fuzzy match op volledige naam
     crew_namen = crew_df["VOLLEDIGE_NAAM"].tolist()
     crew_norms = [normaliseer_naam(n) for n in crew_namen]
+
     match = process.extractOne(naam, crew_norms, scorer=fuzz.token_sort_ratio)
     if not match:
         return None, 0
+
     _, score, index = match
+
     if score >= FUZZY_MATCH_SCORE:
         return crew_namen[index], round(score, 2)
+
     return None, round(score, 2)
 
 
@@ -224,7 +401,11 @@ def parse_datum(waarde):
     if isinstance(waarde, datetime):
         return waarde.date()
     tekst = str(waarde).strip().lower()
-    maand_map = {"jan": 1, "feb": 2, "mrt": 3, "mar": 3, "apr": 4, "mei": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "okt": 10, "oct": 10, "nov": 11, "dec": 12}
+    maand_map = {
+        "jan": 1, "feb": 2, "mrt": 3, "mar": 3, "apr": 4,
+        "mei": 5, "jun": 6, "jul": 7, "aug": 8,
+        "sep": 9, "okt": 10, "oct": 10, "nov": 11, "dec": 12
+    }
     match = re.search(r"(\d{1,2})[-/\s]([a-zA-ZÀ-ÿ]+)", tekst)
     if match:
         dag = int(match.group(1))
@@ -282,7 +463,10 @@ def parse_shiftblokken(cell_text, datum):
     if pd.isna(cell_text) or not datum:
         return []
     tekst = str(cell_text)
-    patroon = re.compile(r"(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\*?\s*(?:\n|\r|\s)*\(?\s*(\d{1,2}:\d{2})?\s*\)?", re.MULTILINE)
+    patroon = re.compile(
+        r"(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\*?\s*(?:\n|\r|\s)*\(?\s*(\d{1,2}:\d{2})?\s*\)?",
+        re.MULTILINE
+    )
     blokken = []
     for match in patroon.finditer(tekst):
         start_txt = match.group(1)
@@ -293,12 +477,25 @@ def parse_shiftblokken(cell_text, datum):
         if einde_dt <= start_dt:
             einde_dt += timedelta(days=1)
         pauze_minuten = parse_pauze_minuten(pauze_txt)
-        blokken.append({"datum": datum, "start": start_dt, "einde": einde_dt, "pauze_minuten": pauze_minuten, "origineel": tekst})
+        blokken.append({
+            "datum": datum,
+            "start": start_dt,
+            "einde": einde_dt,
+            "pauze_minuten": pauze_minuten,
+            "origineel": tekst
+        })
     return blokken
 
 
 def voeg_fout(fouten, naam, datum, fouttype, detail, ernst="Fout", cellen=None):
-    fouten.append({"Medewerker": naam, "Datum": datum, "Ernst": ernst, "Fout": fouttype, "Detail": detail, "Cellen": cellen or []})
+    fouten.append({
+        "Medewerker": naam,
+        "Datum": datum,
+        "Ernst": ernst,
+        "Fout": fouttype,
+        "Detail": detail,
+        "Cellen": cellen or []
+    })
 
 
 def markeer_cellen(ws, cellen, detail):
@@ -308,7 +505,7 @@ def markeer_cellen(ws, cellen, detail):
             cel.fill = FILL_FOUT
             cel.font = FONT_FOUT
             bestaande = cel.comment.text + "\n\n" if cel.comment else ""
-            cel.comment = Comment(bestaande + detail, "Strobbo Checker")
+            cel.comment = Comment(bestaande + detail, "ScheduleSafe")
         except Exception:
             pass
 
@@ -322,12 +519,16 @@ def show_kpi(title, value, sub=""):
         </div>
         """, unsafe_allow_html=True)
 
+
 # =========================
 # UPLOADS
 # =========================
 
 st.markdown('<div class="section-title">Bestanden uploaden</div>', unsafe_allow_html=True)
-st.markdown('<div class="small-note">Upload eerst je crew-database en daarna je Strobbo-weekrooster. De tool maakt een aparte gemarkeerde kopie, je originele bestanden worden niet aangepast.</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="small-note">Upload je crew-database en je Strobbo-weekrooster. ScheduleSafe maakt een aparte gemarkeerde kopie, je originele bestanden worden niet aangepast.</div>',
+    unsafe_allow_html=True
+)
 
 upload_col1, upload_col2 = st.columns(2)
 with upload_col1:
@@ -360,6 +561,7 @@ if "CONTRACT. UREN" not in crew.columns and "CONTRACT UREN" in crew.columns:
     crew["CONTRACT. UREN"] = crew["CONTRACT UREN"]
 if "CONTRACT. UREN" not in crew.columns:
     crew["CONTRACT. UREN"] = ""
+
 vereiste_kolommen = ["NAAM", "VOORNAAM", "LFTD"]
 ontbrekend = [c for c in vereiste_kolommen if c not in crew.columns]
 if ontbrekend:
@@ -397,14 +599,17 @@ if not dag_kolommen:
 shifts = []
 totaal_info = {}
 huidige_medewerker = None
+
 for rij_index, row in raw.iterrows():
     eerste_cel = normaliseer_tekst(row.iloc[0])
+
     if eerste_cel.startswith("#"):
         huidige_medewerker = eerste_cel.replace("#", "").strip()
     elif eerste_cel and not parse_datum(eerste_cel):
         totaal_txt = row.iloc[totaal_kolom] if totaal_kolom < len(row) else ""
         if parse_totaal_uren(totaal_txt) is not None:
             huidige_medewerker = eerste_cel.strip()
+
     if not huidige_medewerker:
         continue
 
@@ -412,7 +617,11 @@ for rij_index, row in raw.iterrows():
         totaal_txt = row.iloc[totaal_kolom]
         totaal_uren = parse_totaal_uren(totaal_txt)
         if totaal_uren is not None:
-            totaal_info[normaliseer_naam(huidige_medewerker)] = {"uren": totaal_uren, "cel": (rij_index + 1, totaal_kolom + 1), "tekst": str(totaal_txt)}
+            totaal_info[normaliseer_naam(huidige_medewerker)] = {
+                "uren": totaal_uren,
+                "cel": (rij_index + 1, totaal_kolom + 1),
+                "tekst": str(totaal_txt)
+            }
 
     for col_index, datum in dag_kolommen.items():
         if col_index >= len(row):
@@ -435,12 +644,15 @@ if shifts_df.empty:
 
 shifts_df = shifts_df.sort_values(["strobbo_naam", "datum", "start", "einde"]).reset_index(drop=True)
 samengevoegde_shifts = []
+
 for (naam, datum), groep in shifts_df.groupby(["strobbo_naam", "datum"]):
     groep = groep.sort_values("start").reset_index(drop=True)
     huidige = groep.iloc[0].to_dict()
+
     for i in range(1, len(groep)):
         blok = groep.iloc[i].to_dict()
         gap_minuten = (blok["start"] - huidige["einde"]).total_seconds() / 60
+
         if gap_minuten <= MERGE_GAP_MINUTEN:
             huidige["einde"] = max(huidige["einde"], blok["einde"])
             huidige["pauze_minuten"] += blok["pauze_minuten"]
@@ -452,10 +664,12 @@ for (naam, datum), groep in shifts_df.groupby(["strobbo_naam", "datum"]):
             huidige["netto_uren"] = bruto_uren - (huidige["pauze_minuten"] / 60)
             samengevoegde_shifts.append(huidige)
             huidige = blok
+
     bruto_uren = (huidige["einde"] - huidige["start"]).total_seconds() / 3600
     huidige["bruto_uren"] = bruto_uren
     huidige["netto_uren"] = bruto_uren - (huidige["pauze_minuten"] / 60)
     samengevoegde_shifts.append(huidige)
+
 shifts_df = pd.DataFrame(samengevoegde_shifts)
 
 # =========================
@@ -465,9 +679,18 @@ shifts_df = pd.DataFrame(samengevoegde_shifts)
 match_resultaten = []
 for naam in shifts_df["strobbo_naam"].unique():
     beste_naam, score = zoek_beste_match(naam, crew)
-    match_resultaten.append({"Strobbo naam": naam, "Database naam": beste_naam if beste_naam else "NIET GEVONDEN", "Match score": round(score, 2)})
+    match_resultaten.append({
+        "Strobbo naam": naam,
+        "Database naam": beste_naam if beste_naam else "NIET GEVONDEN",
+        "Match score": round(score, 2)
+    })
+
 match_df = pd.DataFrame(match_resultaten)
-match_map = {row["Strobbo naam"]: row["Database naam"] for _, row in match_df.iterrows() if row["Database naam"] != "NIET GEVONDEN"}
+match_map = {
+    row["Strobbo naam"]: row["Database naam"]
+    for _, row in match_df.iterrows()
+    if row["Database naam"] != "NIET GEVONDEN"
+}
 shifts_df["database_naam"] = shifts_df["strobbo_naam"].map(match_map)
 
 # =========================
@@ -475,14 +698,24 @@ shifts_df["database_naam"] = shifts_df["strobbo_naam"].map(match_map)
 # =========================
 
 fouten = []
+
 for _, row in match_df.iterrows():
     if row["Database naam"] == "NIET GEVONDEN":
-        voeg_fout(fouten, row["Strobbo naam"], "", "Naam niet gevonden", f"Geen goede match in database. Match score: {row['Match score']}", "Waarschuwing", [])
+        voeg_fout(
+            fouten,
+            row["Strobbo naam"],
+            "",
+            "Naam niet gevonden",
+            f"Geen goede match in database. Match score: {row['Match score']}",
+            "Waarschuwing",
+            []
+        )
 
 for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
     naam = shift["database_naam"]
     datum = shift["datum"]
     cellen = shift.get("bron_cellen", [])
+
     persoon = crew[crew["VOLLEDIGE_NAAM"] == naam].iloc[0]
     leeftijd = persoon["LEEFTIJD"]
     netto_uren = shift["netto_uren"]
@@ -490,34 +723,75 @@ for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
     pauze = shift["pauze_minuten"]
 
     if netto_uren < MIN_DAGUREN:
-        voeg_fout(fouten, naam, datum, "Shift te kort", f"{netto_uren:.2f}u gewerkt. Minimum is {MIN_DAGUREN}u.", "Fout", cellen)
+        voeg_fout(
+            fouten, naam, datum, "Shift te kort",
+            f"{netto_uren:.2f}u gewerkt. Minimum is {MIN_DAGUREN}u.",
+            "Fout", cellen
+        )
+
     if leeftijd is not None and leeftijd < 18:
         if netto_uren > MAX_DAGUREN_MINDERJARIG:
-            voeg_fout(fouten, naam, datum, "Minderjarige werkt te lang", f"{netto_uren:.2f}u gewerkt. Maximum voor <18 is {MAX_DAGUREN_MINDERJARIG}u.", "Fout", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Minderjarige werkt te lang",
+                f"{netto_uren:.2f}u gewerkt. Maximum voor <18 is {MAX_DAGUREN_MINDERJARIG}u.",
+                "Fout", cellen
+            )
     else:
         if netto_uren > MAX_DAGUREN_VOLWASSEN:
-            voeg_fout(fouten, naam, datum, "Shift te lang", f"{netto_uren:.2f}u gewerkt. Maximum is {MAX_DAGUREN_VOLWASSEN}u.", "Fout", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Shift te lang",
+                f"{netto_uren:.2f}u gewerkt. Maximum is {MAX_DAGUREN_VOLWASSEN}u.",
+                "Fout", cellen
+            )
 
     if leeftijd is None or leeftijd >= 18:
         if bruto_uren <= 5 and pauze > 0:
-            voeg_fout(fouten, naam, datum, "Onnodige pauze", f"{bruto_uren:.2f}u shift heeft {pauze} min pauze, maar tot 5u is geen pauze nodig.", "Waarschuwing", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Onnodige pauze",
+                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze, maar tot 5u is geen pauze nodig.",
+                "Waarschuwing", cellen
+            )
         elif 5 < bruto_uren <= 8 and pauze < 20:
-            voeg_fout(fouten, naam, datum, "Pauze ontbreekt", f"{bruto_uren:.2f}u shift. Minstens 20 min pauze nodig. Geplande pauze: {pauze} min.", "Fout", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Pauze ontbreekt",
+                f"{bruto_uren:.2f}u shift. Minstens 20 min pauze nodig. Geplande pauze: {pauze} min.",
+                "Fout", cellen
+            )
         elif bruto_uren > 8 and pauze < 30:
-            voeg_fout(fouten, naam, datum, "Pauze ontbreekt", f"{bruto_uren:.2f}u shift. Minstens 30 min pauze nodig. Geplande pauze: {pauze} min.", "Fout", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Pauze ontbreekt",
+                f"{bruto_uren:.2f}u shift. Minstens 30 min pauze nodig. Geplande pauze: {pauze} min.",
+                "Fout", cellen
+            )
 
     if leeftijd is not None and leeftijd < 18:
         if bruto_uren > 4.5 and bruto_uren <= 6 and pauze < 30:
-            voeg_fout(fouten, naam, datum, "Pauze minderjarige ontbreekt", f"{bruto_uren:.2f}u shift. Minderjarige heeft minstens 30 min pauze nodig. Geplande pauze: {pauze} min.", "Fout", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Pauze minderjarige ontbreekt",
+                f"{bruto_uren:.2f}u shift. Minderjarige heeft minstens 30 min pauze nodig. Geplande pauze: {pauze} min.",
+                "Fout", cellen
+            )
         elif bruto_uren > 6 and pauze < 60:
-            voeg_fout(fouten, naam, datum, "Pauze minderjarige ontbreekt", f"{bruto_uren:.2f}u shift. Minderjarige heeft minstens 60 min pauze nodig. Geplande pauze: {pauze} min.", "Fout", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Pauze minderjarige ontbreekt",
+                f"{bruto_uren:.2f}u shift. Minderjarige heeft minstens 60 min pauze nodig. Geplande pauze: {pauze} min.",
+                "Fout", cellen
+            )
 
     if leeftijd is not None:
         einduur = shift["einde"].hour + shift["einde"].minute / 60
         if leeftijd <= 15 and einduur > 20:
-            voeg_fout(fouten, naam, datum, "Nachtwerk minderjarige", f"{leeftijd} jaar en werkt tot {shift['einde'].strftime('%H:%M')}. Max tot 20:00.", "Fout", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Nachtwerk minderjarige",
+                f"{leeftijd} jaar en werkt tot {shift['einde'].strftime('%H:%M')}. Max tot 20:00.",
+                "Fout", cellen
+            )
         elif 16 <= leeftijd < 18 and einduur > 23:
-            voeg_fout(fouten, naam, datum, "Nachtwerk minderjarige", f"{leeftijd} jaar en werkt tot {shift['einde'].strftime('%H:%M')}. Max tot 23:00.", "Fout", cellen)
+            voeg_fout(
+                fouten, naam, datum, "Nachtwerk minderjarige",
+                f"{leeftijd} jaar en werkt tot {shift['einde'].strftime('%H:%M')}. Max tot 23:00.",
+                "Fout", cellen
+            )
 
 # Weekuren + contracturen op basis van Strobbo totaalcel
 for naam, groep in shifts_df.dropna(subset=["database_naam"]).groupby("database_naam"):
@@ -525,19 +799,34 @@ for naam, groep in shifts_df.dropna(subset=["database_naam"]).groupby("database_
     leeftijd = persoon["LEEFTIJD"]
     medewerker_type = persoon["TYPE"]
     contracturen = persoon["CONTRACTUREN"]
+
     strobbo_naam = groep.iloc[0]["strobbo_naam"]
     info = totaal_info.get(normaliseer_naam(strobbo_naam), {})
     totaal_weekuren = info.get("uren", groep["netto_uren"].sum())
     totaal_cel = [info["cel"]] if "cel" in info else []
+
     if leeftijd is not None and leeftijd < 18:
         if totaal_weekuren > MAX_WEEKUREN_MINDERJARIG:
-            voeg_fout(fouten, naam, "", "Weekuren overschreden", f"{totaal_weekuren:.2f}u gepland volgens Strobbo. Maximum voor <18 is {MAX_WEEKUREN_MINDERJARIG}u.", "Fout", totaal_cel)
+            voeg_fout(
+                fouten, naam, "", "Weekuren overschreden",
+                f"{totaal_weekuren:.2f}u gepland volgens Strobbo. Maximum voor <18 is {MAX_WEEKUREN_MINDERJARIG}u.",
+                "Fout", totaal_cel
+            )
     else:
         if totaal_weekuren > MAX_WEEKUREN_VOLWASSEN:
-            voeg_fout(fouten, naam, "", "Weekuren overschreden", f"{totaal_weekuren:.2f}u gepland volgens Strobbo. Maximum is {MAX_WEEKUREN_VOLWASSEN}u.", "Fout", totaal_cel)
+            voeg_fout(
+                fouten, naam, "", "Weekuren overschreden",
+                f"{totaal_weekuren:.2f}u gepland volgens Strobbo. Maximum is {MAX_WEEKUREN_VOLWASSEN}u.",
+                "Fout", totaal_cel
+            )
+
     if medewerker_type == "vast" and contracturen > 0 and totaal_weekuren < contracturen:
         tekort = contracturen - totaal_weekuren
-        voeg_fout(fouten, naam, "", "Contracturen niet gehaald", f"{totaal_weekuren:.2f}u gepland volgens Strobbo, contract is {contracturen:.2f}u. Tekort: {tekort:.2f}u.", "Fout", totaal_cel)
+        voeg_fout(
+            fouten, naam, "", "Contracturen niet gehaald",
+            f"{totaal_weekuren:.2f}u gepland volgens Strobbo, contract is {contracturen:.2f}u. Tekort: {tekort:.2f}u.",
+            "Fout", totaal_cel
+        )
 
 # Rust tussen shifts
 # - zelfde Strobbo-dag = split shift, minimum 2u
@@ -548,12 +837,21 @@ for naam, groep in shifts_df.dropna(subset=["database_naam"]).groupby("database_
         vorige = groep.iloc[i - 1]
         huidige = groep.iloc[i]
         rusturen = (huidige["start"] - vorige["einde"]).total_seconds() / 3600
+
         if vorige["datum"] == huidige["datum"]:
             if rusturen < MIN_SPLITSHIFT_RUSTUREN:
-                voeg_fout(fouten, naam, huidige["datum"], "Split shift te kort", f"Slechts {rusturen:.2f}u tussen 2 shifts op dezelfde dag. Minimum is {MIN_SPLITSHIFT_RUSTUREN}u.", "Fout", huidige.get("bron_cellen", []))
+                voeg_fout(
+                    fouten, naam, huidige["datum"], "Split shift te kort",
+                    f"Slechts {rusturen:.2f}u tussen 2 shifts op dezelfde dag. Minimum is {MIN_SPLITSHIFT_RUSTUREN}u.",
+                    "Fout", huidige.get("bron_cellen", [])
+                )
         else:
             if rusturen < MIN_RUSTUREN_TUSSEN_DAGEN:
-                voeg_fout(fouten, naam, huidige["datum"], "Te weinig rust tussen dagen", f"Slechts {rusturen:.2f}u rust tussen {vorige['einde'].strftime('%d/%m %H:%M')} en {huidige['start'].strftime('%d/%m %H:%M')}. Minimum is {MIN_RUSTUREN_TUSSEN_DAGEN}u.", "Fout", huidige.get("bron_cellen", []))
+                voeg_fout(
+                    fouten, naam, huidige["datum"], "Te weinig rust tussen dagen",
+                    f"Slechts {rusturen:.2f}u rust tussen {vorige['einde'].strftime('%d/%m %H:%M')} en {huidige['start'].strftime('%d/%m %H:%M')}. Minimum is {MIN_RUSTUREN_TUSSEN_DAGEN}u.",
+                    "Fout", huidige.get("bron_cellen", [])
+                )
 
 fouten_df = pd.DataFrame(fouten)
 
@@ -587,7 +885,9 @@ with kpi3:
 with kpi4:
     show_kpi("Medewerkers", aantal_medewerkers, "gematcht met database")
 
-tab_overzicht, tab_fouten, tab_shifts, tab_match, tab_export = st.tabs(["📊 Overzicht", "🚨 Fouten", "🕒 Shifts", "🔗 Naamkoppeling", "📥 Export"])
+tab_overzicht, tab_fouten, tab_shifts, tab_match, tab_export = st.tabs([
+    "📊 Overzicht", "🚨 Fouten", "🕒 Shifts", "🔗 Naamkoppeling", "📥 Export"
+])
 
 with tab_overzicht:
     st.subheader("📊 Weekuren per medewerker")
@@ -597,7 +897,13 @@ with tab_overzicht:
         info = totaal_info.get(normaliseer_naam(strobbo_naam), {})
         totaal = info.get("uren", groep["netto_uren"].sum())
         persoon = crew[crew["VOLLEDIGE_NAAM"] == naam].iloc[0]
-        weekuren.append({"Medewerker": naam, "Weekuren": round(totaal, 2), "Type": persoon["TYPE"], "Leeftijd": persoon["LEEFTIJD"], "Contracturen": persoon["CONTRACTUREN"]})
+        weekuren.append({
+            "Medewerker": naam,
+            "Weekuren": round(totaal, 2),
+            "Type": persoon["TYPE"],
+            "Leeftijd": persoon["LEEFTIJD"],
+            "Contracturen": persoon["CONTRACTUREN"]
+        })
     st.dataframe(pd.DataFrame(weekuren), use_container_width=True)
 
 with tab_fouten:
@@ -615,7 +921,14 @@ with tab_shifts:
     toon_shifts["Einde"] = toon_shifts["einde"].dt.strftime("%d/%m/%Y %H:%M")
     toon_shifts["Netto uren"] = toon_shifts["netto_uren"].round(2)
     toon_shifts["Bruto uren"] = toon_shifts["bruto_uren"].round(2)
-    st.dataframe(toon_shifts[["strobbo_naam", "database_naam", "datum", "Start", "Einde", "pauze_minuten", "Bruto uren", "Netto uren"]], use_container_width=True)
+    st.dataframe(
+        toon_shifts[[
+            "strobbo_naam", "database_naam", "datum",
+            "Start", "Einde", "pauze_minuten",
+            "Bruto uren", "Netto uren"
+        ]],
+        use_container_width=True
+    )
 
 with tab_match:
     st.subheader("✅ Naamkoppeling Strobbo ↔ Database")
@@ -624,7 +937,13 @@ with tab_match:
 with tab_export:
     st.subheader("📥 Downloads")
     st.write("Download hier de gemarkeerde Strobbo Excel of het losse foutenrapport.")
-    st.download_button(label="📥 Download gemarkeerde Strobbo Excel", data=excel_buffer.getvalue(), file_name="strobbo_rooster_gecontroleerd.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.download_button(
+        label="📥 Download gemarkeerde Strobbo Excel",
+        data=excel_buffer.getvalue(),
+        file_name="strobbo_rooster_gecontroleerd.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
     rapport_buffer = BytesIO()
     with pd.ExcelWriter(rapport_buffer, engine="openpyxl") as writer:
         fouten_df.drop(columns=["Cellen"], errors="ignore").to_excel(writer, index=False, sheet_name="Foutenrapport")
@@ -633,4 +952,10 @@ with tab_export:
         toon_export["Start"] = toon_export["start"].dt.strftime("%d/%m/%Y %H:%M")
         toon_export["Einde"] = toon_export["einde"].dt.strftime("%d/%m/%Y %H:%M")
         toon_export.to_excel(writer, index=False, sheet_name="Gevonden shifts")
-    st.download_button(label="📥 Download foutenrapport als Excel", data=rapport_buffer.getvalue(), file_name="foutenrapport_strobbo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    st.download_button(
+        label="📥 Download foutenrapport als Excel",
+        data=rapport_buffer.getvalue(),
+        file_name="foutenrapport_strobbo.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
