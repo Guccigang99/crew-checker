@@ -246,7 +246,7 @@ MERGE_GAP_MINUTEN = 5
 
 # Te veel pauze waarschuwingen
 MAX_PAUZE_TOT_5U = 20
-MAX_PAUZE_5_TOT_8U = 45
+MAX_PAUZE_5_TOT_8U = 60
 MAX_PAUZE_BOVEN_8U = 90
 
 FILL_FOUT = PatternFill("solid", fgColor="FFFF00")
