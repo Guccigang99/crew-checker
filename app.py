@@ -37,6 +37,8 @@ st.markdown("""
         --safe-text: #10251a;
         --safe-muted: #53665d;
         --safe-white: #ffffff;
+        --safe-danger: #b42318;
+        --safe-warning: #b54708;
     }
 
     html, body, [class*="css"] {
@@ -221,10 +223,10 @@ with hero_logo_col:
 
 with hero_text_col:
     st.markdown("""
-        <div class="brand-badge">Smart Workforce Compliance</div>
+        <div class="brand-badge">BY FBO</div>
         <h1 class="brand-title">ScheduleSafe</h1>
         <p class="brand-subtitle">
-            Controleer Strobbo-weekroosters op contracturen, pauzes, rusttijden, split shifts en minderjarigenregels.
+            Controleer Strobbo-weekroosters op basis van de wetgeving. Gauthier Meeuws © 
         </p>
     """, unsafe_allow_html=True)
 
@@ -244,15 +246,8 @@ MIN_SPLITSHIFT_RUSTUREN = 2
 FUZZY_MATCH_SCORE = 65
 MERGE_GAP_MINUTEN = 5
 
-# Te veel pauze waarschuwingen
-MAX_PAUZE_TOT_5U = 20
-MAX_PAUZE_5_TOT_8U = 60
-MAX_PAUZE_BOVEN_8U = 90
-
 FILL_FOUT = PatternFill("solid", fgColor="FFFF00")
-FILL_RIJ_FOUT = PatternFill("solid", fgColor="FFC000")
 FONT_FOUT = Font(color="FF0000", bold=True)
-FONT_RIJ_FOUT = Font(color="9C0006", bold=True)
 
 # =========================
 # HELPERS
@@ -268,7 +263,13 @@ def normaliseer_naam(naam):
     naam = str(naam).lower().strip()
     naam = naam.replace("#", "")
     naam = re.sub(r"<\s*\d+", "", naam)
-    naam = re.sub(r"\b(mgr|manager|flx|flexi|student|crew|crewtrainer)\b", "", naam)
+
+    # Strobbo-tags wegfilteren, ook als ze achter de naam staan:
+    # "Veronique MGR" -> "veronique"
+    # "Ayrton FLX" -> "ayrton"
+    # "Luka B. <18" -> "luka b"
+    naam = re.sub(r"\b(mgr|MGR|manager|flx|flexi|student|crew|crewtrainer)\b", "", naam)
+
     naam = naam.replace(".", " ")
     naam = naam.replace("-", " ")
     naam = re.sub(r"\s+", " ", naam)
@@ -326,6 +327,7 @@ def zoek_beste_match(strobbo_naam, crew_df):
     if not naam:
         return None, 0
 
+    # 1. Exacte voornaam match
     exacte_matches = []
     for _, row in crew_df.iterrows():
         voornaam = normaliseer_naam(row["VOORNAAM"])
@@ -335,6 +337,9 @@ def zoek_beste_match(strobbo_naam, crew_df):
     if len(exacte_matches) == 1:
         return exacte_matches[0], 100
 
+    # 2. Als exportnaam meerdere woorden heeft, probeer eerste woord als voornaam
+    # bv. "Veronique MGR" is na normalisatie "veronique"
+    # bv. "Ayrton verantwoordelijke" -> eerste woord "ayrton"
     eerste_woord = naam.split(" ")[0] if naam else ""
     if eerste_woord and eerste_woord != naam:
         exacte_voornaam = []
@@ -345,6 +350,7 @@ def zoek_beste_match(strobbo_naam, crew_df):
         if len(exacte_voornaam) == 1:
             return exacte_voornaam[0], 98
 
+    # 3. Voornaam + initiaal achternaam, bv. Luka B.
     match_initiaal = re.match(r"^([a-zA-ZÀ-ÿ]+)\s+([a-zA-Z])$", naam)
     if match_initiaal:
         voornaam_gezocht = match_initiaal.group(1)
@@ -357,6 +363,7 @@ def zoek_beste_match(strobbo_naam, crew_df):
             if voornaam == voornaam_gezocht and achternaam.startswith(initiaal_gezocht):
                 return row["VOLLEDIGE_NAAM"], 100
 
+    # 4. Fuzzy match op voornaam
     voornamen = crew_df["VOORNAAM"].astype(str).tolist()
     voornamen_norm = [normaliseer_naam(v) for v in voornamen]
 
@@ -366,6 +373,7 @@ def zoek_beste_match(strobbo_naam, crew_df):
         if score >= 88:
             return crew_df.iloc[index]["VOLLEDIGE_NAAM"], round(score, 2)
 
+    # 5. Fuzzy op eerste woord
     if eerste_woord:
         match = process.extractOne(eerste_woord, voornamen_norm, scorer=fuzz.ratio)
         if match:
@@ -373,6 +381,7 @@ def zoek_beste_match(strobbo_naam, crew_df):
             if score >= 92:
                 return crew_df.iloc[index]["VOLLEDIGE_NAAM"], round(score, 2)
 
+    # 6. Fuzzy match op volledige naam
     crew_namen = crew_df["VOLLEDIGE_NAAM"].tolist()
     crew_norms = [normaliseer_naam(n) for n in crew_namen]
 
@@ -499,43 +508,6 @@ def markeer_cellen(ws, cellen, detail):
             cel.comment = Comment(bestaande + detail, "ScheduleSafe")
         except Exception:
             pass
-
-
-def markeer_rijen_met_fout(ws, fouten_df, status_col):
-    """
-    Zet naast elke rij met een fout 'FOUT'.
-    De cel krijgt ook een comment met alle meldingen voor die rij.
-    """
-    if fouten_df.empty:
-        return
-
-    ws.cell(row=1, column=status_col).value = "Controle"
-    ws.cell(row=1, column=status_col).fill = FILL_RIJ_FOUT
-    ws.cell(row=1, column=status_col).font = Font(color="000000", bold=True)
-
-    rij_meldingen = {}
-
-    for _, fout in fouten_df.iterrows():
-        for rij, _kolom in fout.get("Cellen", []):
-            melding = f"{fout['Fout']}: {fout['Detail']}"
-            rij_meldingen.setdefault(int(rij), []).append(melding)
-
-    for rij, meldingen in rij_meldingen.items():
-        uniek = []
-        for m in meldingen:
-            if m not in uniek:
-                uniek.append(m)
-
-        cel = ws.cell(row=rij, column=status_col)
-        cel.value = "FOUT"
-        cel.fill = FILL_RIJ_FOUT
-        cel.font = FONT_RIJ_FOUT
-        cel.comment = Comment("\n\n".join(uniek), "ScheduleSafe")
-
-    try:
-        ws.column_dimensions[ws.cell(row=1, column=status_col).column_letter].width = 16
-    except Exception:
-        pass
 
 
 def show_kpi(title, value, sub=""):
@@ -772,7 +744,6 @@ for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
                 "Fout", cellen
             )
 
-    # Pauzes volwassenen
     if leeftijd is None or leeftijd >= 18:
         if bruto_uren <= 5 and pauze > 0:
             voeg_fout(
@@ -793,27 +764,6 @@ for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
                 "Fout", cellen
             )
 
-        # Te veel pauze
-        if bruto_uren <= 5 and pauze > MAX_PAUZE_TOT_5U:
-            voeg_fout(
-                fouten, naam, datum, "Te veel pauze",
-                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Dit lijkt te veel voor deze shift.",
-                "Waarschuwing", cellen
-            )
-        elif 5 < bruto_uren <= 8 and pauze > MAX_PAUZE_5_TOT_8U:
-            voeg_fout(
-                fouten, naam, datum, "Te veel pauze",
-                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Meer dan {MAX_PAUZE_5_TOT_8U} min is opvallend.",
-                "Waarschuwing", cellen
-            )
-        elif bruto_uren > 8 and pauze > MAX_PAUZE_BOVEN_8U:
-            voeg_fout(
-                fouten, naam, datum, "Te veel pauze",
-                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Meer dan {MAX_PAUZE_BOVEN_8U} min is opvallend.",
-                "Waarschuwing", cellen
-            )
-
-    # Pauzes minderjarigen
     if leeftijd is not None and leeftijd < 18:
         if bruto_uren > 4.5 and bruto_uren <= 6 and pauze < 30:
             voeg_fout(
@@ -826,26 +776,6 @@ for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
                 fouten, naam, datum, "Pauze minderjarige ontbreekt",
                 f"{bruto_uren:.2f}u shift. Minderjarige heeft minstens 60 min pauze nodig. Geplande pauze: {pauze} min.",
                 "Fout", cellen
-            )
-
-        # Te veel pauze ook bij minderjarigen
-        if bruto_uren <= 5 and pauze > MAX_PAUZE_TOT_5U:
-            voeg_fout(
-                fouten, naam, datum, "Te veel pauze",
-                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Dit lijkt te veel voor deze shift.",
-                "Waarschuwing", cellen
-            )
-        elif 5 < bruto_uren <= 8 and pauze > MAX_PAUZE_5_TOT_8U:
-            voeg_fout(
-                fouten, naam, datum, "Te veel pauze",
-                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Meer dan {MAX_PAUZE_5_TOT_8U} min is opvallend.",
-                "Waarschuwing", cellen
-            )
-        elif bruto_uren > 8 and pauze > MAX_PAUZE_BOVEN_8U:
-            voeg_fout(
-                fouten, naam, datum, "Te veel pauze",
-                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Meer dan {MAX_PAUZE_BOVEN_8U} min is opvallend.",
-                "Waarschuwing", cellen
             )
 
     if leeftijd is not None:
@@ -932,10 +862,6 @@ fouten_df = pd.DataFrame(fouten)
 if not fouten_df.empty:
     for _, fout in fouten_df.iterrows():
         markeer_cellen(ws, fout.get("Cellen", []), f"{fout['Fout']}: {fout['Detail']}")
-
-# Zet naast de rij een duidelijke FOUT-melding
-status_col = ws.max_column + 1
-markeer_rijen_met_fout(ws, fouten_df, status_col)
 
 excel_buffer = BytesIO()
 wb.save(excel_buffer)
