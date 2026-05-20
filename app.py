@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill, Font
+from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.comments import Comment
 
 # =========================
@@ -37,8 +37,6 @@ st.markdown("""
         --safe-text: #10251a;
         --safe-muted: #53665d;
         --safe-white: #ffffff;
-        --safe-danger: #b42318;
-        --safe-warning: #b54708;
     }
 
     html, body, [class*="css"] {
@@ -223,10 +221,10 @@ with hero_logo_col:
 
 with hero_text_col:
     st.markdown("""
-        <div class="brand-badge">BY FBO</div>
+        <div class="brand-badge">Smart Workforce Compliance</div>
         <h1 class="brand-title">ScheduleSafe</h1>
         <p class="brand-subtitle">
-            Controleer Strobbo-weekroosters op basis van de wetgeving. Gauthier Meeuws © 
+            Controleer Strobbo-weekroosters op contracturen, pauzes, rusttijden, split shifts, bezetting en minderjarigenregels.
         </p>
     """, unsafe_allow_html=True)
 
@@ -246,6 +244,11 @@ MIN_SPLITSHIFT_RUSTUREN = 2
 FUZZY_MATCH_SCORE = 65
 MERGE_GAP_MINUTEN = 5
 
+# Te veel pauze waarschuwingen
+MAX_PAUZE_TOT_5U = 20
+MAX_PAUZE_5_TOT_8U = 45
+MAX_PAUZE_BOVEN_8U = 90
+
 FILL_FOUT = PatternFill("solid", fgColor="FFFF00")
 FONT_FOUT = Font(color="FF0000", bold=True)
 
@@ -263,13 +266,7 @@ def normaliseer_naam(naam):
     naam = str(naam).lower().strip()
     naam = naam.replace("#", "")
     naam = re.sub(r"<\s*\d+", "", naam)
-
-    # Strobbo-tags wegfilteren, ook als ze achter de naam staan:
-    # "Veronique MGR" -> "veronique"
-    # "Ayrton FLX" -> "ayrton"
-    # "Luka B. <18" -> "luka b"
-    naam = re.sub(r"\b(mgr|MGR|manager|flx|flexi|student|crew|crewtrainer)\b", "", naam)
-
+    naam = re.sub(r"\b(mgr|manager|flx|flexi|student|crew|crewtrainer)\b", "", naam)
     naam = naam.replace(".", " ")
     naam = naam.replace("-", " ")
     naam = re.sub(r"\s+", " ", naam)
@@ -337,9 +334,7 @@ def zoek_beste_match(strobbo_naam, crew_df):
     if len(exacte_matches) == 1:
         return exacte_matches[0], 100
 
-    # 2. Als exportnaam meerdere woorden heeft, probeer eerste woord als voornaam
-    # bv. "Veronique MGR" is na normalisatie "veronique"
-    # bv. "Ayrton verantwoordelijke" -> eerste woord "ayrton"
+    # 2. Eerste woord als voornaam
     eerste_woord = naam.split(" ")[0] if naam else ""
     if eerste_woord and eerste_woord != naam:
         exacte_voornaam = []
@@ -428,6 +423,17 @@ def vind_dag_kolommen(raw):
     return dag_kolommen
 
 
+def vind_datum_header_cellen(raw):
+    """Map datum -> celpositie van de datumheader, zodat onderbezetting op de dagkop gemarkeerd kan worden."""
+    header_cellen = {}
+    for rij in range(min(10, len(raw))):
+        for col in range(raw.shape[1]):
+            datum = parse_datum(raw.iloc[rij, col])
+            if datum:
+                header_cellen[datum] = (rij + 1, col + 1)
+    return header_cellen
+
+
 def vind_totaal_kolom(raw):
     for rij in range(min(10, len(raw))):
         for col in range(raw.shape[1]):
@@ -487,6 +493,31 @@ def parse_shiftblokken(cell_text, datum):
     return blokken
 
 
+def parse_time_value(value):
+    if pd.isna(value):
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    match = re.search(r"(\d{1,2})[:hH](\d{2})", s)
+    if match:
+        uur = int(match.group(1))
+        minuut = int(match.group(2))
+        if 0 <= uur <= 23 and 0 <= minuut <= 59:
+            return uur, minuut
+    match = re.search(r"^\d{1,2}$", s)
+    if match:
+        uur = int(s)
+        if 0 <= uur <= 23:
+            return uur, 0
+    return None
+
+
+def combine_date_time(datum, time_tuple):
+    uur, minuut = time_tuple
+    return datetime.combine(datum, datetime.min.time()) + timedelta(hours=uur, minutes=minuut)
+
+
 def voeg_fout(fouten, naam, datum, fouttype, detail, ernst="Fout", cellen=None):
     fouten.append({
         "Medewerker": naam,
@@ -508,6 +539,45 @@ def markeer_cellen(ws, cellen, detail):
             cel.comment = Comment(bestaande + detail, "ScheduleSafe")
         except Exception:
             pass
+
+
+def add_dataframe_sheet(wb, sheet_name, df):
+    if sheet_name in wb.sheetnames:
+        del wb[sheet_name]
+    ws_new = wb.create_sheet(sheet_name)
+
+    if df is None or df.empty:
+        ws_new.append(["Geen data"])
+        return ws_new
+
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        cell = ws_new.cell(row=1, column=col_idx, value=str(col_name))
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="006B3F")
+        cell.alignment = Alignment(horizontal="center")
+
+    for _, row in df.iterrows():
+        values = []
+        for col in df.columns:
+            val = row[col]
+            if isinstance(val, (datetime, pd.Timestamp)):
+                val = val.strftime("%d/%m/%Y %H:%M")
+            elif hasattr(val, "strftime"):
+                try:
+                    val = val.strftime("%d/%m/%Y")
+                except Exception:
+                    val = str(val)
+            values.append(val)
+        ws_new.append(values)
+
+    ws_new.auto_filter.ref = ws_new.dimensions
+    ws_new.freeze_panes = "A2"
+
+    for col_cells in ws_new.columns:
+        length = max(len(str(c.value)) if c.value is not None else 0 for c in col_cells)
+        ws_new.column_dimensions[col_cells[0].column_letter].width = min(max(length + 2, 14), 55)
+
+    return ws_new
 
 
 def show_kpi(title, value, sub=""):
@@ -539,6 +609,38 @@ with upload_col2:
     st.markdown('<div class="upload-card">', unsafe_allow_html=True)
     rooster_file = st.file_uploader("📅 Strobbo weekrooster Excel", type=["xlsx"])
     st.markdown('</div>', unsafe_allow_html=True)
+
+# Minimumbezetting input
+st.markdown('<div class="section-title">Minimumbezetting per dagdeel</div>', unsafe_allow_html=True)
+with st.expander("👥 Minimumbezetting instellen", expanded=False):
+    st.write("Vul enkel de dagdelen in die je wil controleren. Minimum = 0 betekent dat de regel wordt genegeerd.")
+
+    default_bezetting = pd.DataFrame([
+        {"Dag": d, "Start": "12:00", "Einde": "14:00", "Minimum personen": 0}
+        for d in ["ma", "di", "wo", "do", "vr", "za", "zo"]
+    ] + [
+        {"Dag": d, "Start": "14:00", "Einde": "18:00", "Minimum personen": 0}
+        for d in ["ma", "di", "wo", "do", "vr", "za", "zo"]
+    ] + [
+        {"Dag": d, "Start": "18:00", "Einde": "22:00", "Minimum personen": 0}
+        for d in ["ma", "di", "wo", "do", "vr", "za", "zo"]
+    ])
+
+    bezetting_input = st.data_editor(
+        default_bezetting,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "Dag": st.column_config.SelectboxColumn(
+                "Dag",
+                options=["ma", "di", "wo", "do", "vr", "za", "zo"],
+                required=True,
+            ),
+            "Start": st.column_config.TextColumn("Start", help="Bijvoorbeeld 12:00"),
+            "Einde": st.column_config.TextColumn("Einde", help="Bijvoorbeeld 14:00"),
+            "Minimum personen": st.column_config.NumberColumn("Minimum personen", min_value=0, step=1),
+        }
+    )
 
 if not crew_file or not rooster_file:
     st.stop()
@@ -587,6 +689,7 @@ except Exception as e:
     st.stop()
 
 dag_kolommen = vind_dag_kolommen(raw)
+datum_header_cellen = vind_datum_header_cellen(raw)
 totaal_kolom = vind_totaal_kolom(raw)
 if not dag_kolommen:
     st.error("Ik kon geen datumkolommen vinden in het Strobbo-bestand.")
@@ -744,6 +847,7 @@ for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
                 "Fout", cellen
             )
 
+    # Pauzes volwassenen
     if leeftijd is None or leeftijd >= 18:
         if bruto_uren <= 5 and pauze > 0:
             voeg_fout(
@@ -764,6 +868,27 @@ for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
                 "Fout", cellen
             )
 
+        # Te veel pauze
+        if bruto_uren <= 5 and pauze > MAX_PAUZE_TOT_5U:
+            voeg_fout(
+                fouten, naam, datum, "Te veel pauze",
+                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Dit lijkt te veel voor deze shift.",
+                "Waarschuwing", cellen
+            )
+        elif 5 < bruto_uren <= 8 and pauze > MAX_PAUZE_5_TOT_8U:
+            voeg_fout(
+                fouten, naam, datum, "Te veel pauze",
+                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Meer dan {MAX_PAUZE_5_TOT_8U} min is opvallend.",
+                "Waarschuwing", cellen
+            )
+        elif bruto_uren > 8 and pauze > MAX_PAUZE_BOVEN_8U:
+            voeg_fout(
+                fouten, naam, datum, "Te veel pauze",
+                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Meer dan {MAX_PAUZE_BOVEN_8U} min is opvallend.",
+                "Waarschuwing", cellen
+            )
+
+    # Pauzes minderjarigen
     if leeftijd is not None and leeftijd < 18:
         if bruto_uren > 4.5 and bruto_uren <= 6 and pauze < 30:
             voeg_fout(
@@ -776,6 +901,26 @@ for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
                 fouten, naam, datum, "Pauze minderjarige ontbreekt",
                 f"{bruto_uren:.2f}u shift. Minderjarige heeft minstens 60 min pauze nodig. Geplande pauze: {pauze} min.",
                 "Fout", cellen
+            )
+
+        # Te veel pauze ook bij minderjarigen melden
+        if bruto_uren <= 5 and pauze > MAX_PAUZE_TOT_5U:
+            voeg_fout(
+                fouten, naam, datum, "Te veel pauze",
+                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Dit lijkt te veel voor deze shift.",
+                "Waarschuwing", cellen
+            )
+        elif 5 < bruto_uren <= 8 and pauze > MAX_PAUZE_5_TOT_8U:
+            voeg_fout(
+                fouten, naam, datum, "Te veel pauze",
+                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Meer dan {MAX_PAUZE_5_TOT_8U} min is opvallend.",
+                "Waarschuwing", cellen
+            )
+        elif bruto_uren > 8 and pauze > MAX_PAUZE_BOVEN_8U:
+            voeg_fout(
+                fouten, naam, datum, "Te veel pauze",
+                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze. Meer dan {MAX_PAUZE_BOVEN_8U} min is opvallend.",
+                "Waarschuwing", cellen
             )
 
     if leeftijd is not None:
@@ -853,15 +998,111 @@ for naam, groep in shifts_df.dropna(subset=["database_naam"]).groupby("database_
                     "Fout", huidige.get("bron_cellen", [])
                 )
 
+# =========================
+# BEZETTING CONTROLEREN
+# =========================
+
+dag_map = {0: "ma", 1: "di", 2: "wo", 3: "do", 4: "vr", 5: "za", 6: "zo"}
+bezetting_resultaten = []
+
+# enkel regels met minimum > 0
+try:
+    bezetting_rules = bezetting_input.copy()
+    bezetting_rules["Minimum personen"] = pd.to_numeric(bezetting_rules["Minimum personen"], errors="coerce").fillna(0).astype(int)
+    bezetting_rules = bezetting_rules[bezetting_rules["Minimum personen"] > 0]
+except Exception:
+    bezetting_rules = pd.DataFrame()
+
+if not bezetting_rules.empty:
+    unieke_datums = sorted(set(dag_kolommen.values()))
+
+    for datum in unieke_datums:
+        dagcode = dag_map.get(datum.weekday())
+
+        regels_dag = bezetting_rules[bezetting_rules["Dag"].astype(str).str.lower().str.strip() == dagcode]
+        if regels_dag.empty:
+            continue
+
+        for _, regel in regels_dag.iterrows():
+            start_tuple = parse_time_value(regel.get("Start"))
+            einde_tuple = parse_time_value(regel.get("Einde"))
+            minimum = int(regel.get("Minimum personen", 0))
+
+            if not start_tuple or not einde_tuple or minimum <= 0:
+                continue
+
+            interval_start = combine_date_time(datum, start_tuple)
+            interval_einde = combine_date_time(datum, einde_tuple)
+            if interval_einde <= interval_start:
+                interval_einde += timedelta(days=1)
+
+            dag_shifts = shifts_df.dropna(subset=["database_naam"])
+            dag_shifts = dag_shifts[dag_shifts["datum"] == datum]
+
+            aanwezig = set()
+            for _, sh in dag_shifts.iterrows():
+                overlap_start = max(sh["start"], interval_start)
+                overlap_einde = min(sh["einde"], interval_einde)
+                if overlap_start < overlap_einde:
+                    aanwezig.add(sh["database_naam"])
+
+            aantal = len(aanwezig)
+            status = "OK" if aantal >= minimum else "Onderbezet"
+
+            bezetting_resultaten.append({
+                "Datum": datum,
+                "Dag": dagcode,
+                "Start": f"{start_tuple[0]:02d}:{start_tuple[1]:02d}",
+                "Einde": f"{einde_tuple[0]:02d}:{einde_tuple[1]:02d}",
+                "Minimum": minimum,
+                "Gepland": aantal,
+                "Verschil": aantal - minimum,
+                "Status": status,
+                "Aanwezige medewerkers": ", ".join(sorted(aanwezig))
+            })
+
+            if aantal < minimum:
+                cellen = []
+                if datum in datum_header_cellen:
+                    cellen = [datum_header_cellen[datum]]
+
+                voeg_fout(
+                    fouten,
+                    f"{dagcode} {datum.strftime('%d/%m')}",
+                    datum,
+                    "Onderbezetting",
+                    f"{dagcode} {datum.strftime('%d/%m')} {start_tuple[0]:02d}:{start_tuple[1]:02d}-{einde_tuple[0]:02d}:{einde_tuple[1]:02d}: {aantal} gepland, minimum {minimum}. Tekort: {minimum - aantal}.",
+                    "Fout",
+                    cellen
+                )
+
+bezetting_df = pd.DataFrame(bezetting_resultaten)
 fouten_df = pd.DataFrame(fouten)
 
 # =========================
-# EXCEL MARKEREN
+# EXCEL MARKEREN + FILTERS
 # =========================
 
 if not fouten_df.empty:
     for _, fout in fouten_df.iterrows():
         markeer_cellen(ws, fout.get("Cellen", []), f"{fout['Fout']}: {fout['Detail']}")
+
+# Filter in originele Strobbo sheet
+try:
+    ws.auto_filter.ref = ws.dimensions
+except Exception:
+    pass
+
+# Foutenrapport met filter
+zichtbare_fouten_excel = fouten_df.drop(columns=["Cellen"], errors="ignore") if not fouten_df.empty else pd.DataFrame(
+    columns=["Medewerker", "Datum", "Ernst", "Fout", "Detail"]
+)
+add_dataframe_sheet(wb, "Foutenrapport", zichtbare_fouten_excel)
+
+# Bezettingscontrole met filter
+add_dataframe_sheet(wb, "Bezettingscontrole", bezetting_df if not bezetting_df.empty else pd.DataFrame(
+    columns=["Datum", "Dag", "Start", "Einde", "Minimum", "Gepland", "Verschil", "Status", "Aanwezige medewerkers"]
+))
 
 excel_buffer = BytesIO()
 wb.save(excel_buffer)
@@ -885,8 +1126,8 @@ with kpi3:
 with kpi4:
     show_kpi("Medewerkers", aantal_medewerkers, "gematcht met database")
 
-tab_overzicht, tab_fouten, tab_shifts, tab_match, tab_export = st.tabs([
-    "📊 Overzicht", "🚨 Fouten", "🕒 Shifts", "🔗 Naamkoppeling", "📥 Export"
+tab_overzicht, tab_fouten, tab_bezetting, tab_shifts, tab_match, tab_export = st.tabs([
+    "📊 Overzicht", "🚨 Fouten", "👥 Bezetting", "🕒 Shifts", "🔗 Naamkoppeling", "📥 Export"
 ])
 
 with tab_overzicht:
@@ -913,6 +1154,13 @@ with tab_fouten:
     else:
         st.error(f"{len(fouten_df)} fout(en) of waarschuwing(en) gevonden.")
         st.dataframe(fouten_df.drop(columns=["Cellen"], errors="ignore"), use_container_width=True)
+
+with tab_bezetting:
+    st.subheader("👥 Bezettingscontrole")
+    if bezetting_df.empty:
+        st.info("Geen minimumbezetting ingesteld of geen bezettingsregels actief.")
+    else:
+        st.dataframe(bezetting_df, use_container_width=True)
 
 with tab_shifts:
     st.subheader("📋 Gevonden shifts")
@@ -948,6 +1196,8 @@ with tab_export:
     with pd.ExcelWriter(rapport_buffer, engine="openpyxl") as writer:
         fouten_df.drop(columns=["Cellen"], errors="ignore").to_excel(writer, index=False, sheet_name="Foutenrapport")
         match_df.to_excel(writer, index=False, sheet_name="Naamkoppeling")
+        if not bezetting_df.empty:
+            bezetting_df.to_excel(writer, index=False, sheet_name="Bezettingscontrole")
         toon_export = shifts_df.copy()
         toon_export["Start"] = toon_export["start"].dt.strftime("%d/%m/%Y %H:%M")
         toon_export["Einde"] = toon_export["einde"].dt.strftime("%d/%m/%Y %H:%M")
