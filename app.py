@@ -241,8 +241,7 @@ MAX_DAGUREN_VOLWASSEN = 11
 MAX_DAGUREN_MINDERJARIG = 8
 MAX_WEEKUREN_VOLWASSEN = 50
 MAX_WEEKUREN_MINDERJARIG = 40
-MIN_RUSTUREN_TUSSEN_DAGEN_VOLWASSEN = 11
-MIN_RUSTUREN_TUSSEN_DAGEN_MINDERJARIG = 12
+MIN_RUSTUREN_TUSSEN_DAGEN = 10
 MIN_SPLITSHIFT_RUSTUREN = 2
 FUZZY_MATCH_SCORE = 65
 MERGE_GAP_MINUTEN = 5
@@ -746,18 +745,22 @@ for _, shift in shifts_df.dropna(subset=["database_naam"]).iterrows():
             )
 
     if leeftijd is None or leeftijd >= 18:
-        # Nieuwe regel 18+: pas pauze verplicht vanaf meer dan 6u arbeid.
-        # Vanaf >6u is minstens 15 min pauze nodig.
-        if bruto_uren <= 6 and pauze > 0:
+        if bruto_uren <= 5 and pauze > 0:
             voeg_fout(
                 fouten, naam, datum, "Onnodige pauze",
-                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze, maar tot en met 6u is geen pauze verplicht.",
+                f"{bruto_uren:.2f}u shift heeft {pauze} min pauze, maar tot 5u is geen pauze nodig.",
                 "Waarschuwing", cellen
             )
-        elif bruto_uren > 6 and pauze < 15:
+        elif 5 < bruto_uren <= 8 and pauze < 20:
             voeg_fout(
                 fouten, naam, datum, "Pauze ontbreekt",
-                f"{bruto_uren:.2f}u shift. Minstens 15 min pauze nodig. Geplande pauze: {pauze} min.",
+                f"{bruto_uren:.2f}u shift. Minstens 20 min pauze nodig. Geplande pauze: {pauze} min.",
+                "Fout", cellen
+            )
+        elif bruto_uren > 8 and pauze < 30:
+            voeg_fout(
+                fouten, naam, datum, "Pauze ontbreekt",
+                f"{bruto_uren:.2f}u shift. Minstens 30 min pauze nodig. Geplande pauze: {pauze} min.",
                 "Fout", cellen
             )
 
@@ -827,18 +830,8 @@ for naam, groep in shifts_df.dropna(subset=["database_naam"]).groupby("database_
 
 # Rust tussen shifts
 # - zelfde Strobbo-dag = split shift, minimum 2u
-# - andere dag = rust tussen werkdagen:
-#   * 18+ = minimum 11u
-#   * <18 = minimum 12u
+# - andere dag = minimum 10u rust tussen dagen
 for naam, groep in shifts_df.dropna(subset=["database_naam"]).groupby("database_naam"):
-    persoon = crew[crew["VOLLEDIGE_NAAM"] == naam].iloc[0]
-    leeftijd = persoon["LEEFTIJD"]
-    min_rust_tussen_dagen = (
-        MIN_RUSTUREN_TUSSEN_DAGEN_MINDERJARIG
-        if leeftijd is not None and leeftijd < 18
-        else MIN_RUSTUREN_TUSSEN_DAGEN_VOLWASSEN
-    )
-
     groep = groep.sort_values("start").reset_index(drop=True)
     for i in range(1, len(groep)):
         vorige = groep.iloc[i - 1]
@@ -853,10 +846,10 @@ for naam, groep in shifts_df.dropna(subset=["database_naam"]).groupby("database_
                     "Fout", huidige.get("bron_cellen", [])
                 )
         else:
-            if rusturen < min_rust_tussen_dagen:
+            if rusturen < MIN_RUSTUREN_TUSSEN_DAGEN:
                 voeg_fout(
                     fouten, naam, huidige["datum"], "Te weinig rust tussen dagen",
-                    f"Slechts {rusturen:.2f}u rust tussen {vorige['einde'].strftime('%d/%m %H:%M')} en {huidige['start'].strftime('%d/%m %H:%M')}. Minimum is {min_rust_tussen_dagen}u.",
+                    f"Slechts {rusturen:.2f}u rust tussen {vorige['einde'].strftime('%d/%m %H:%M')} en {huidige['start'].strftime('%d/%m %H:%M')}. Minimum is {MIN_RUSTUREN_TUSSEN_DAGEN}u.",
                     "Fout", huidige.get("bron_cellen", [])
                 )
 
